@@ -100,7 +100,7 @@ function PracticeContent() {
       }
       loadSubunits();
     }
-  }, [subunitParam, unitParam, sectionParam, modeParam]);
+  }, [subunitParam, unitParam, sectionParam, modeParam, limitParam]);
 
   const handleExitQuiz = () => {
     router.push("/luyen-tap");

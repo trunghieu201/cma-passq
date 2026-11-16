@@ -63,6 +63,9 @@ export function SubunitDetailModal({
   onClose,
   subunit,
 }: SubunitDetailModalProps) {
+  const [questionCount, setQuestionCount] = React.useState<number>(10);
+  const [studyMode, setStudyMode] = React.useState<"practice" | "exam">("practice");
+
   if (!subunit) return null;
 
   const stars = subunit.progress?.stars || 0;
@@ -171,6 +174,62 @@ export function SubunitDetailModal({
           </div>
         </div>
 
+        {/* Quick Quiz Options */}
+        <div className="p-3.5 rounded-xl border border-border bg-ink-50/60 space-y-3">
+          <div className="flex items-center justify-between text-xs font-semibold text-ink-800">
+            <span>Tùy chọn luyện tập:</span>
+            <span className="text-muted-foreground font-normal">Ngân hàng: {subunit.questionCount} câu</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            {/* Number of questions */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-ink-600">Số câu:</span>
+              {[10, 20, 30, 50].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => setQuestionCount(num)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                    questionCount === num
+                      ? "bg-brand-600 text-white shadow-xs"
+                      : "bg-card border border-border text-ink-700 hover:bg-muted"
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+
+            {/* Mode: Instant vs Exam */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-ink-600">Chế độ:</span>
+              <button
+                type="button"
+                onClick={() => setStudyMode("practice")}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  studyMode === "practice"
+                    ? "bg-brand-600 text-white shadow-xs"
+                    : "bg-card border border-border text-ink-700 hover:bg-muted"
+                }`}
+              >
+                Học tập
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudyMode("exam")}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  studyMode === "exam"
+                    ? "bg-brand-600 text-white shadow-xs"
+                    : "bg-card border border-border text-ink-700 hover:bg-muted"
+                }`}
+              >
+                Kiểm tra
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2 border-t border-border">
           <Button
@@ -190,8 +249,8 @@ export function SubunitDetailModal({
             className="w-full sm:w-auto bg-brand-600 hover:bg-brand-500 text-white font-semibold cursor-pointer gap-2"
             onClick={onClose}
           >
-            <Link href={`/luyen-tap?subunit=${subunit.id}&mode=practice`}>
-              <span>Luyện tập ngay (10 câu)</span>
+            <Link href={`/luyen-tap?subunit=${subunit.id}&mode=${studyMode}&limit=${questionCount}`}>
+              <span>Bắt đầu luyện tập ({questionCount} câu)</span>
               <Play className="size-4 fill-white" />
             </Link>
           </Button>

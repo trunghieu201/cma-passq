@@ -17,6 +17,7 @@ import { GET as mockExamDetailGET, POST as mockExamSubmitPOST } from "@/app/api/
 import { POST as loginPOST } from "@/app/api/auth/login/route";
 import { PUT as planPUT } from "@/app/api/user/plan/route";
 import { GET as devicesGET, POST as devicesPOST } from "@/app/api/auth/devices/route";
+import { GET as notesGET, POST as notesPOST } from "@/app/api/notes/route";
 import { NextRequest } from "next/server";
 
 describe("Milestone 3 & 4 Feature API Suite", () => {
@@ -416,6 +417,76 @@ describe("Milestone 3 & 4 Feature API Suite", () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.message).toContain("thu hồi");
+    });
+  });
+
+  // 11. Personal Notes API (/api/notes)
+  describe("11. Personal Notes API (/api/notes)", () => {
+    it("rejects unauthorized note requests with 401", async () => {
+      const getReq = createTestRequest("http://localhost:3000/api/notes?questionId=p2-1");
+      const getRes = await notesGET(getReq);
+      expect(getRes.status).toBe(401);
+
+      const postReq = createTestRequest("http://localhost:3000/api/notes", {
+        method: "POST",
+        body: { questionId: "p2-1", content: "Test note" },
+      });
+      const postRes = await notesPOST(postReq);
+      expect(postRes.status).toBe(401);
+    });
+
+    it("creates, retrieves, and clears personal study notes with tenant isolation", async () => {
+      const q = await prisma.question.findFirst();
+      const qId = q!.id;
+
+      // 1. Save note
+      const saveReq = createTestRequest("http://localhost:3000/api/notes", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${testToken}` },
+        body: { questionId: qId, content: "Lưu ý công thức DuPont: ROE = Net Profit Margin * Asset Turnover * Leverage" },
+      });
+      const saveRes = await notesPOST(saveReq);
+      expect(saveRes.status).toBe(200);
+      const saveData = await saveRes.json();
+      expect(saveData.success).toBe(true);
+      expect(saveData.note).toContain("DuPont");
+
+      // 2. Retrieve note for specific question
+      const getReq = createTestRequest(`http://localhost:3000/api/notes?questionId=${qId}`, {
+        headers: { Authorization: `Bearer ${testToken}` },
+      });
+      const getRes = await notesGET(getReq);
+      expect(getRes.status).toBe(200);
+      const getData = await getRes.json();
+      expect(getData.note).toContain("DuPont");
+
+      // 3. List all notes
+      const listReq = createTestRequest("http://localhost:3000/api/notes", {
+        headers: { Authorization: `Bearer ${testToken}` },
+      });
+      const listRes = await notesGET(listReq);
+      expect(listRes.status).toBe(200);
+      const listData = await listRes.json();
+      expect(listData.notes.some((n: any) => n.questionId === qId)).toBe(true);
+
+      // 4. Clear note with empty content
+      const clearReq = createTestRequest("http://localhost:3000/api/notes", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${testToken}` },
+        body: { questionId: qId, content: "   " },
+      });
+      const clearRes = await notesPOST(clearReq);
+      expect(clearRes.status).toBe(200);
+      const clearData = await clearRes.json();
+      expect(clearData.note).toBeNull();
+
+      // 5. Verify deleted
+      const verifyReq = createTestRequest(`http://localhost:3000/api/notes?questionId=${qId}`, {
+        headers: { Authorization: `Bearer ${testToken}` },
+      });
+      const verifyRes = await notesGET(verifyReq);
+      const verifyData = await verifyRes.json();
+      expect(verifyData.note).toBeNull();
     });
   });
 });

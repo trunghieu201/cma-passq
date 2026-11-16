@@ -19,7 +19,10 @@ import {
   XCircle,
   Layers,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   BookOpen,
+  StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -80,9 +83,21 @@ export function QuizRunner({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<any>(null);
 
-  // Formula helper modal
+  // Formula helper modal & Question palette
   const [showFormulaHelper, setShowFormulaHelper] = useState(false);
   const [showQuestionPalette, setShowQuestionPalette] = useState(false);
+
+  // Note dialog state
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [questionNotes, setQuestionNotes] = useState<Record<string, string>>({});
+  const [activeNoteText, setActiveNoteText] = useState("");
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
+  // Collapsible Fact Pattern state
+  const [isFactPatternExpanded, setIsFactPatternExpanded] = useState(true);
+
+  // Distractor analysis accordion expanded
+  const [expandedDistractors, setExpandedDistractors] = useState<Record<string, boolean>>({});
 
   // Session ID from API
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -272,6 +287,61 @@ export function QuizRunner({
     }
   };
 
+  // Sync personal notes on question change
+  useEffect(() => {
+    if (!currentQ) return;
+    if (questionNotes[currentQ.id] !== undefined) {
+      setActiveNoteText(questionNotes[currentQ.id]);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const localNote = localStorage.getItem(`cma_note_${currentQ.id}`);
+        if (localNote) {
+          setQuestionNotes((prev) => ({ ...prev, [currentQ.id]: localNote }));
+          setActiveNoteText(localNote);
+        }
+      } catch (e) {}
+    }
+    fetch(`/api/notes?questionId=${currentQ.id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && typeof data.note === "string") {
+          setQuestionNotes((prev) => ({ ...prev, [currentQ.id]: data.note }));
+          setActiveNoteText(data.note);
+        }
+      })
+      .catch(() => {});
+  }, [currentQ?.id]);
+
+  const handleSaveNote = async () => {
+    if (!currentQ) return;
+    setIsSavingNote(true);
+    const content = activeNoteText.trim();
+    try {
+      setQuestionNotes((prev) => ({ ...prev, [currentQ.id]: content }));
+      if (typeof window !== "undefined") {
+        try {
+          if (content) {
+            localStorage.setItem(`cma_note_${currentQ.id}`, content);
+          } else {
+            localStorage.removeItem(`cma_note_${currentQ.id}`);
+          }
+        } catch (e) {}
+      }
+      await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: currentQ.id, content }),
+      });
+      setShowNoteModal(false);
+    } catch (e) {
+      setShowNoteModal(false);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   const handleCheckAnswer = async () => {
     if (!currentQ) return;
     const selected = selectedAnswers[currentQ.id];
@@ -377,7 +447,7 @@ export function QuizRunner({
         }
       }
     }
-  }, [questions, selectedAnswers, sessionId, subunitId, secondsElapsed]);
+  }, [questions, sessionId, subunitId, storageDraftKey]);
 
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -403,14 +473,29 @@ export function QuizRunner({
   const isFlagged = currentQ ? Boolean(flaggedQuestions[currentQ.id]) : false;
   const isBookmarked = currentQ ? Boolean(bookmarkedQuestions[currentQ.id]) : false;
 
-  // Global Keyboard Navigation (A/B/C/D or 1/2/3/4, Enter/Space, S, F, M, Arrows)
+  // Global Keyboard Navigation (A/B/C/D or 1/2/3/4, Enter/Space, S, F, M, R, Arrows)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName.toLowerCase();
       if (activeTag === "input" || activeTag === "textarea") return;
-      if (showFormulaHelper || showQuestionPalette || isFinished) return;
+      if (showFormulaHelper || showQuestionPalette || showNoteModal || isFinished) return;
 
       const key = e.key.toUpperCase();
+
+      // Check Alt+A/B/C/D or Shift+A/B/C/D to eliminate choice directly
+      if (e.altKey || e.shiftKey) {
+        if (["A", "B", "C", "D"].includes(key)) {
+          e.preventDefault();
+          toggleEliminateKey(key);
+          return;
+        }
+        if (["1", "2", "3", "4"].includes(e.key)) {
+          e.preventDefault();
+          const mapKeys: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D" };
+          toggleEliminateKey(mapKeys[e.key]);
+          return;
+        }
+      }
 
       if (["A", "B", "C", "D"].includes(key)) {
         e.preventDefault();
@@ -450,6 +535,9 @@ export function QuizRunner({
       } else if (key === "M") {
         e.preventDefault();
         toggleBookmark();
+      } else if (key === "R" || key === "N") {
+        e.preventDefault();
+        setShowNoteModal(true);
       }
     };
 
@@ -464,15 +552,19 @@ export function QuizRunner({
     questions.length,
     showFormulaHelper,
     showQuestionPalette,
+    showNoteModal,
     isFinished,
     handleFinishQuiz,
   ]);
 
   const answeredCount = Object.keys(selectedAnswers).length;
+  const paceSecondsPerQ = currentIndex > 0 ? Math.round(secondsElapsed / (currentIndex + 1)) : secondsElapsed;
+  const paceMinutesPerQ = (paceSecondsPerQ / 60).toFixed(1);
+  const isPaceGood = paceSecondsPerQ <= 108; // <= 1.8 mins standard
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      {/* 1. Header Bar: Navigation, Question Counter, Timer, Mode Toggle */}
+      {/* 1. Header Bar: Navigation, Question Counter, Timer, Pacing, Mode Toggle */}
       <div className="p-3.5 md:p-4 rounded-xl border border-border bg-card shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button
@@ -529,6 +621,18 @@ export function QuizRunner({
             <span>{formatTimer(secondsElapsed)}</span>
           </div>
 
+          {/* Prometric Pacing Badge */}
+          <div
+            className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-mono font-semibold border ${
+              isPaceGood
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : "bg-amber-50 text-amber-800 border-amber-200"
+            }`}
+            title="Tốc độ làm bài chuẩn IMA: 1.8 phút/câu"
+          >
+            <span>⏱ {paceMinutesPerQ}m/câu</span>
+          </div>
+
           {/* Quick Palette Trigger */}
           <Button
             type="button"
@@ -542,11 +646,25 @@ export function QuizRunner({
             <span className="font-mono text-brand-600">({answeredCount}/{questions.length})</span>
           </Button>
 
+          {/* Personal Note Button */}
+          <button
+            type="button"
+            onClick={() => setShowNoteModal(true)}
+            title="Ghi chú cá nhân (Phím R)"
+            className={`p-2 rounded-lg border transition-colors cursor-pointer ${
+              Boolean(questionNotes[currentQ.id])
+                ? "bg-blue-50 border-blue-300 text-blue-600"
+                : "border-border hover:bg-muted text-ink-500"
+            }`}
+          >
+            <StickyNote className="size-4" />
+          </button>
+
           {/* Flag Button */}
           <button
             type="button"
             onClick={toggleFlag}
-            title="Đánh dấu câu hỏi"
+            title="Đánh dấu câu hỏi (Phím F)"
             className={`p-2 rounded-lg border transition-colors cursor-pointer ${
               isFlagged
                 ? "bg-amber-50 border-amber-300 text-amber-600"
@@ -560,7 +678,7 @@ export function QuizRunner({
           <button
             type="button"
             onClick={toggleBookmark}
-            title="Lưu câu hỏi"
+            title="Lưu câu hỏi (Phím M)"
             className={`p-2 rounded-lg border transition-colors cursor-pointer ${
               isBookmarked
                 ? "bg-brand-50 border-brand-300 text-brand-600"
@@ -584,11 +702,32 @@ export function QuizRunner({
       <div className="rounded-xl border border-border bg-card p-5 md:p-7 shadow-sm space-y-6">
         {/* Basis Scenario if present */}
         {currentQ.basisScenario && (
-          <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 text-xs md:text-sm text-ink-800 leading-relaxed font-sans space-y-1">
-            <span className="font-bold text-amber-900 block uppercase tracking-wider text-[11px]">
-              Dữ liệu tình huống chung (Fact Pattern):
-            </span>
-            <div className="whitespace-pre-line">{currentQ.basisScenario}</div>
+          <div className="rounded-xl bg-amber-50/50 border border-amber-200 text-xs md:text-sm text-ink-800 leading-relaxed font-sans overflow-hidden">
+            <div
+              className="px-4 py-2.5 bg-amber-100/60 border-b border-amber-200 flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setIsFactPatternExpanded((prev) => !prev)}
+            >
+              <span className="font-bold text-amber-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <BookOpen className="size-3.5 text-amber-800" />
+                Dữ liệu tình huống chung (Fact Pattern)
+              </span>
+              <div className="text-xs text-amber-800 hover:text-amber-950 font-semibold flex items-center gap-1 cursor-pointer">
+                {isFactPatternExpanded ? (
+                  <>
+                    <span>Thu gọn</span>
+                    <ChevronUp className="size-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>Mở rộng</span>
+                    <ChevronDown className="size-3.5" />
+                  </>
+                )}
+              </div>
+            </div>
+            {isFactPatternExpanded && (
+              <div className="p-4 whitespace-pre-line text-xs md:text-sm">{currentQ.basisScenario}</div>
+            )}
           </div>
         )}
 
@@ -698,28 +837,79 @@ export function QuizRunner({
 
             {/* Distractor Analyses Accordion / List */}
             <div className="space-y-2 pt-2 border-t border-brand-100">
-              <span className="text-xs font-bold text-brand-900 uppercase tracking-wider block">
-                Phân tích bẫy các đáp án sai (Distractor Analysis):
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-brand-900 uppercase tracking-wider block">
+                  Phân tích bẫy các đáp án (Distractor Analysis):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allExpanded = currentQ.choices.every((c) => expandedDistractors[c.choiceKey] ?? true);
+                    const nextState: Record<string, boolean> = {};
+                    currentQ.choices.forEach((c) => {
+                      nextState[c.choiceKey] = !allExpanded;
+                    });
+                    setExpandedDistractors(nextState);
+                  }}
+                  className="text-[11px] font-semibold text-brand-700 hover:text-brand-900 cursor-pointer"
+                >
+                  {currentQ.choices.every((c) => expandedDistractors[c.choiceKey] ?? true)
+                    ? "Thu gọn tất cả"
+                    : "Mở rộng tất cả"}
+                </button>
+              </div>
+
               <div className="space-y-2">
-                {currentQ.choices.map((c) => (
-                  <div
-                    key={c.choiceKey}
-                    className={`p-3 rounded-lg text-xs leading-relaxed border ${
-                      c.choiceKey === currentQ.correctChoice
-                        ? "bg-emerald-50/50 border-emerald-200 text-emerald-900"
-                        : "bg-card border-border text-ink-700"
-                    }`}
-                  >
-                    <span className="font-bold mr-1.5">
-                      Đáp án ({c.choiceKey}):
-                    </span>
-                    {c.distractorAnalysis ||
-                      (c.choiceKey === currentQ.correctChoice
-                        ? "Đây là câu trả lời chính xác theo nguyên tắc lý thuyết và chuẩn mực IMA."
-                        : "Lựa chọn này vi phạm công thức hoặc điều kiện tiền đề trong đề bài.")}
-                  </div>
-                ))}
+                {currentQ.choices.map((c) => {
+                  const isExp = expandedDistractors[c.choiceKey] ?? true;
+                  const isCorrect = c.choiceKey === currentQ.correctChoice;
+
+                  return (
+                    <div
+                      key={c.choiceKey}
+                      className={`rounded-lg text-xs leading-relaxed border transition-colors ${
+                        isCorrect
+                          ? "bg-emerald-50/50 border-emerald-200 text-emerald-950"
+                          : "bg-card border-border text-ink-800"
+                      }`}
+                    >
+                      <div
+                        className="p-2.5 flex items-center justify-between cursor-pointer select-none"
+                        onClick={() =>
+                          setExpandedDistractors((prev) => ({
+                            ...prev,
+                            [c.choiceKey]: !(prev[c.choiceKey] ?? true),
+                          }))
+                        }
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">Đáp án ({c.choiceKey}):</span>
+                          {isCorrect ? (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              Chính xác · Chuẩn IMA
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-red-100 text-red-800">
+                              Phương án bẫy
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {isExp ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </div>
+                      </div>
+
+                      {isExp && (
+                        <div className="px-3 pb-3 pt-0 border-t border-border/40 text-ink-700 text-xs">
+                          {c.distractorAnalysis ||
+                            (isCorrect
+                              ? "Đây là câu trả lời chính xác theo nguyên tắc lý thuyết và chuẩn mực IMA."
+                              : "Lựa chọn này vi phạm công thức hoặc điều kiện tiền đề trong đề bài.")}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -781,11 +971,53 @@ export function QuizRunner({
           <span className="font-semibold text-ink-800">Phím tắt:</span>
           <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">A/B/C/D</kbd> hoặc <kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">1-4</kbd> Chọn</span>
           <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">Enter / Space</kbd> Tiếp / Xem lời giải</span>
-          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">S</kbd> Gạch loại trừ</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">Alt + Phím</kbd> hoặc <kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">S</kbd> Gạch loại trừ</span>
           <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">F</kbd> Cờ</span>
           <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">M</kbd> Lưu</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">R</kbd> Ghi chú</span>
         </div>
       </div>
+
+      {/* Personal Note Modal */}
+      <Dialog open={showNoteModal} onOpenChange={setShowNoteModal}>
+        <DialogContent className="max-w-md p-5 space-y-4">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-ink-900 flex items-center gap-2">
+              <StickyNote className="size-4 text-brand-600" />
+              Ghi chú cá nhân (Câu {currentIndex + 1})
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <textarea
+              rows={5}
+              value={activeNoteText}
+              onChange={(e) => setActiveNoteText(e.target.value)}
+              placeholder="Ghi chú lại công thức, bẫy cần nhớ hoặc cách giải cho câu hỏi này..."
+              className="w-full text-xs p-3 rounded-lg border border-border bg-card text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNoteModal(false)}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                disabled={isSavingNote}
+                onClick={handleSaveNote}
+                className="bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs cursor-pointer"
+              >
+                {isSavingNote ? "Đang lưu..." : "Lưu ghi chú"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Question Palette Modal */}
       <Dialog open={showQuestionPalette} onOpenChange={setShowQuestionPalette}>

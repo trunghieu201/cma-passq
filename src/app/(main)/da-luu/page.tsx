@@ -17,6 +17,8 @@ export default function BookmarksPage() {
   const [bookmarks, setBookmarks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const bookmarksRef = React.useRef(bookmarks);
+  bookmarksRef.current = bookmarks;
 
   const fetchBookmarks = useCallback(async () => {
     try {
@@ -32,13 +34,13 @@ export default function BookmarksPage() {
         } catch (e) {}
       }
     } catch (err: any) {
-      if (bookmarks.length === 0) {
+      if (bookmarksRef.current.length === 0) {
         setError(err.message || "Đã có lỗi xảy ra.");
       }
     } finally {
       setIsLoading(false);
     }
-  }, [bookmarks.length]);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -52,15 +54,22 @@ export default function BookmarksPage() {
     }
     fetchBookmarks();
 
+    let lastFocus = Date.now();
     const handleUpdate = () => {
       fetchBookmarks();
     };
+    const handleFocus = () => {
+      if (Date.now() - lastFocus > 5000) {
+        lastFocus = Date.now();
+        fetchBookmarks();
+      }
+    };
 
     window.addEventListener("cma:bookmark_updated", handleUpdate);
-    window.addEventListener("focus", handleUpdate);
+    window.addEventListener("focus", handleFocus);
     return () => {
       window.removeEventListener("cma:bookmark_updated", handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [fetchBookmarks]);
 

@@ -15,6 +15,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dataRef = React.useRef(data);
+  dataRef.current = data;
 
   // Load cached stats on mount for instant zero-latency render
   useEffect(() => {
@@ -45,26 +47,34 @@ export default function DashboardPage() {
         } catch (e) {}
       }
     } catch (err: any) {
-      if (!data) {
+      if (!dataRef.current) {
         setError(err.message || "Đã có lỗi xảy ra.");
       }
     } finally {
       setIsLoading(false);
     }
-  }, [data]);
+  }, []);
 
   useEffect(() => {
     fetchStats();
 
+    let lastFocus = Date.now();
     const handleProgressUpdate = () => {
       fetchStats();
     };
+    const handleFocus = () => {
+      // Debounce window focus events to prevent rapid cascade refetches
+      if (Date.now() - lastFocus > 5000) {
+        lastFocus = Date.now();
+        fetchStats();
+      }
+    };
 
     window.addEventListener("cma:progress_updated", handleProgressUpdate);
-    window.addEventListener("focus", handleProgressUpdate);
+    window.addEventListener("focus", handleFocus);
     return () => {
       window.removeEventListener("cma:progress_updated", handleProgressUpdate);
-      window.removeEventListener("focus", handleProgressUpdate);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [fetchStats]);
 

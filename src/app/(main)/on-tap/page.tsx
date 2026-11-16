@@ -21,6 +21,8 @@ export default function SrsPage() {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dataRef = React.useRef(data);
+  dataRef.current = data;
 
   // Review mode active?
   const [isReviewing, setIsReviewing] = useState(false);
@@ -40,13 +42,13 @@ export default function SrsPage() {
         } catch (e) {}
       }
     } catch (err: any) {
-      if (!data) {
+      if (!dataRef.current) {
         setError(err.message || "Đã có lỗi xảy ra.");
       }
     } finally {
       setIsLoading(false);
     }
-  }, [data]);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -60,15 +62,22 @@ export default function SrsPage() {
     }
     fetchSrsData();
 
+    let lastFocus = Date.now();
     const handleUpdate = () => {
       fetchSrsData();
     };
+    const handleFocus = () => {
+      if (Date.now() - lastFocus > 5000) {
+        lastFocus = Date.now();
+        fetchSrsData();
+      }
+    };
 
     window.addEventListener("cma:progress_updated", handleUpdate);
-    window.addEventListener("focus", handleUpdate);
+    window.addEventListener("focus", handleFocus);
     return () => {
       window.removeEventListener("cma:progress_updated", handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [fetchSrsData]);
 

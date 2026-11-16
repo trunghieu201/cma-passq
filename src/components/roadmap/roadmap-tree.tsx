@@ -69,6 +69,7 @@ export function RoadmapTree() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedSection, setSelectedSection] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedUnits, setExpandedUnits] = useState<Record<string, boolean>>({});
 
@@ -112,15 +113,22 @@ export function RoadmapTree() {
 
     loadCurriculum();
 
+    let lastFocus = Date.now();
     const handleProgressUpdate = () => {
       loadCurriculum();
     };
+    const handleFocus = () => {
+      if (Date.now() - lastFocus > 5000) {
+        lastFocus = Date.now();
+        loadCurriculum();
+      }
+    };
 
     window.addEventListener("cma:progress_updated", handleProgressUpdate);
-    window.addEventListener("focus", handleProgressUpdate);
+    window.addEventListener("focus", handleFocus);
     return () => {
       window.removeEventListener("cma:progress_updated", handleProgressUpdate);
-      window.removeEventListener("focus", handleProgressUpdate);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [initialActiveNode]);
 
@@ -166,22 +174,48 @@ export function RoadmapTree() {
     return curriculum
       .filter((sec) => selectedSection === "ALL" || sec.code === selectedSection)
       .map((sec) => {
-        if (!searchQuery.trim()) return sec;
-        const q = searchQuery.toLowerCase();
         const filteredUnits = sec.units
           .map((unit) => {
-            const matchesUnit =
-              unit.title.toLowerCase().includes(q) ||
-              unit.code.toLowerCase().includes(q);
-            const matchingSubunits = unit.subunits.filter(
-              (su) =>
-                su.title.toLowerCase().includes(q) ||
-                su.code.toLowerCase().includes(q)
-            );
-            if (matchesUnit || matchingSubunits.length > 0) {
+            let matchingSubunits = unit.subunits;
+
+            if (statusFilter !== "ALL") {
+              matchingSubunits = matchingSubunits.filter((su) => {
+                if (statusFilter === "completed") {
+                  return su.status === "completed" || su.status === "mastered";
+                }
+                if (statusFilter === "in_progress") {
+                  return su.status === "in_progress" || (su.attemptsCount > 0 && su.status !== "completed" && su.status !== "mastered");
+                }
+                if (statusFilter === "not_started") {
+                  return su.status !== "completed" && su.status !== "mastered" && su.status !== "in_progress" && su.attemptsCount === 0;
+                }
+                return true;
+              });
+            }
+
+            if (searchQuery.trim()) {
+              const q = searchQuery.toLowerCase();
+              const matchesUnit =
+                unit.title.toLowerCase().includes(q) ||
+                unit.code.toLowerCase().includes(q);
+              const searchFiltered = matchingSubunits.filter(
+                (su) =>
+                  su.title.toLowerCase().includes(q) ||
+                  su.code.toLowerCase().includes(q)
+              );
+              if (matchesUnit || searchFiltered.length > 0) {
+                return {
+                  ...unit,
+                  subunits: searchFiltered.length > 0 ? searchFiltered : matchingSubunits,
+                };
+              }
+              return null;
+            }
+
+            if (matchingSubunits.length > 0) {
               return {
                 ...unit,
-                subunits: matchingSubunits.length > 0 ? matchingSubunits : unit.subunits,
+                subunits: matchingSubunits,
               };
             }
             return null;
@@ -194,7 +228,7 @@ export function RoadmapTree() {
         };
       })
       .filter((sec) => sec.units.length > 0);
-  }, [curriculum, selectedSection, searchQuery]);
+  }, [curriculum, selectedSection, searchQuery, statusFilter]);
 
   // Overall stats
   const totalSubunitsCount = useMemo(() => {
@@ -339,6 +373,29 @@ export function RoadmapTree() {
               className="w-full text-xs pl-9 pr-3 py-2 rounded-lg border border-border bg-card text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
+        </div>
+
+        {/* Status Filter Sub-bar */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+          <span className="text-[11px] font-semibold text-ink-500 mr-1 hidden sm:inline">Trạng thái:</span>
+          {[
+            { key: "ALL", label: "Tất cả" },
+            { key: "not_started", label: "Chưa học" },
+            { key: "in_progress", label: "Đang học" },
+            { key: "completed", label: "Hoàn thành" },
+          ].map((st) => (
+            <button
+              key={st.key}
+              onClick={() => setStatusFilter(st.key)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                statusFilter === st.key
+                  ? "bg-ink-800 text-white shadow-xs"
+                  : "bg-ink-50 hover:bg-ink-100 text-ink-600 border border-ink-200"
+              }`}
+            >
+              {st.label}
+            </button>
+          ))}
         </div>
       </div>
 

@@ -169,6 +169,22 @@ export default function MockExamPage() {
       if (showSubmitConfirm || showPalette) return;
 
       const key = e.key.toUpperCase();
+
+      // Check Alt+A/B/C/D or Shift+A/B/C/D to eliminate choice directly
+      if (e.altKey || e.shiftKey) {
+        if (["A", "B", "C", "D"].includes(key)) {
+          e.preventDefault();
+          toggleEliminateKey(key);
+          return;
+        }
+        if (["1", "2", "3", "4"].includes(e.key)) {
+          e.preventDefault();
+          const mapKeys: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D" };
+          toggleEliminateKey(mapKeys[e.key]);
+          return;
+        }
+      }
+
       if (["A", "B", "C", "D"].includes(key)) {
         e.preventDefault();
         handleSelectChoice(key);
@@ -334,6 +350,10 @@ export default function MockExamPage() {
     const userChoice = userAnswers[currentQ?.id];
     const isFlagged = Boolean(flaggedQuestions[currentQ?.id]);
     const answeredCount = Object.keys(userAnswers).length;
+    const elapsedSeconds = Math.max(1, (activeExam.durationMinutes * 60) - secondsLeft);
+    const paceSecondsPerQ = currentIndex > 0 ? Math.round(elapsedSeconds / (currentIndex + 1)) : elapsedSeconds;
+    const paceMinutesPerQ = (paceSecondsPerQ / 60).toFixed(1);
+    const isPaceGood = paceSecondsPerQ <= 108; // 1.8 mins standard
 
     return (
       <div className="space-y-4 max-w-4xl mx-auto">
@@ -351,6 +371,18 @@ export default function MockExamPage() {
             <div className="flex items-center gap-1.5 px-3 py-1 rounded bg-slate-800 border border-slate-700 text-xs font-mono font-bold text-amber-400">
               <Clock className="size-3.5" />
               <span>{formatTimer(secondsLeft)}</span>
+            </div>
+
+            {/* Pacing Badge */}
+            <div
+              className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded text-xs font-mono font-bold border ${
+                isPaceGood
+                  ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
+                  : "bg-amber-950/80 text-amber-400 border-amber-800"
+              }`}
+              title="Tốc độ làm bài chuẩn IMA: 1.8 phút/câu"
+            >
+              <span>⏱ {paceMinutesPerQ}m/câu</span>
             </div>
 
             {/* Flag */}
