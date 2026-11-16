@@ -116,12 +116,97 @@ export default function MockExamPage() {
       setEliminatedChoices({});
       setSecondsLeft((data.durationMinutes || 180) * 60);
       setExamResult(null);
+
+      // Restore saved draft if user previously refreshed
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem(`cma_exam_draft_${mockId}`);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.userAnswers) setUserAnswers(parsed.userAnswers);
+            if (parsed.eliminatedChoices) setEliminatedChoices(parsed.eliminatedChoices);
+            if (parsed.flaggedQuestions) setFlaggedQuestions(parsed.flaggedQuestions);
+            if (typeof parsed.currentIndex === "number") setCurrentIndex(parsed.currentIndex);
+            if (typeof parsed.secondsLeft === "number" && parsed.secondsLeft > 0) {
+              setSecondsLeft(parsed.secondsLeft);
+            }
+          }
+        } catch (e) {}
+      }
     } catch (err: any) {
       setError(err.message || "Lỗi khởi động đề thi.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Auto-save exam progress to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeExam || examResult) return;
+    if (Object.keys(userAnswers).length === 0) return;
+    try {
+      localStorage.setItem(
+        `cma_exam_draft_${activeExam.id}`,
+        JSON.stringify({
+          userAnswers,
+          eliminatedChoices,
+          flaggedQuestions,
+          currentIndex,
+          secondsLeft,
+          savedAt: Date.now(),
+        })
+      );
+    } catch (e) {}
+  }, [activeExam, userAnswers, eliminatedChoices, flaggedQuestions, currentIndex, secondsLeft, examResult]);
+
+  // Keyboard navigation for exam simulator
+  useEffect(() => {
+    if (!activeExam || examQuestions.length === 0 || examResult) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea") return;
+      if (showSubmitConfirm || showPalette) return;
+
+      const key = e.key.toUpperCase();
+      if (["A", "B", "C", "D"].includes(key)) {
+        e.preventDefault();
+        handleSelectChoice(key);
+      } else if (["1", "2", "3", "4"].includes(e.key)) {
+        e.preventDefault();
+        const mapKeys: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D" };
+        handleSelectChoice(mapKeys[e.key]);
+      } else if (key === "S") {
+        e.preventDefault();
+        const q = examQuestions[currentIndex];
+        if (q) {
+          const choiceToElim = userAnswers[q.id] || "A";
+          toggleEliminateKey(choiceToElim);
+        }
+      } else if (key === "F") {
+        e.preventDefault();
+        toggleFlag();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setCurrentIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (currentIndex < examQuestions.length - 1) {
+          setCurrentIndex((prev) => prev + 1);
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (currentIndex < examQuestions.length - 1) {
+          setCurrentIndex((prev) => prev + 1);
+        } else {
+          setShowSubmitConfirm(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeExam, examQuestions, currentIndex, userAnswers, showSubmitConfirm, showPalette, examResult]);
 
   const handleSelectChoice = (choiceKey: string) => {
     const q = examQuestions[currentIndex];
@@ -140,8 +225,7 @@ export default function MockExamPage() {
     });
   };
 
-  const toggleEliminate = (e: React.MouseEvent, choiceKey: string) => {
-    e.stopPropagation();
+  const toggleEliminateKey = (choiceKey: string) => {
     const q = examQuestions[currentIndex];
     if (!q) return;
     const isCurrentlyEliminated = (eliminatedChoices[q.id] || []).includes(choiceKey);
@@ -164,6 +248,11 @@ export default function MockExamPage() {
         return prev;
       });
     }
+  };
+
+  const toggleEliminate = (e: React.MouseEvent, choiceKey: string) => {
+    e.stopPropagation();
+    toggleEliminateKey(choiceKey);
   };
 
   const toggleFlag = () => {
@@ -213,6 +302,12 @@ export default function MockExamPage() {
       setError(err.message || "Lỗi khi nộp bài.");
     } finally {
       setIsSubmitting(false);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(`cma_exam_draft_${exam.id}`);
+        } catch (e) {}
+        window.dispatchEvent(new CustomEvent("cma:progress_updated"));
+      }
     }
   };
 

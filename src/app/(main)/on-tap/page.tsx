@@ -27,7 +27,6 @@ export default function SrsPage() {
 
   const fetchSrsData = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
       const res = await fetch("/api/reviews/today");
       if (!res.ok) {
@@ -35,15 +34,42 @@ export default function SrsPage() {
       }
       const json = await res.json();
       setData(json);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("cma_cached_srs", JSON.stringify(json));
+        } catch (e) {}
+      }
     } catch (err: any) {
-      setError(err.message || "Đã có lỗi xảy ra.");
+      if (!data) {
+        setError(err.message || "Đã có lỗi xảy ra.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("cma_cached_srs");
+        if (cached) {
+          setData(JSON.parse(cached));
+          setIsLoading(false);
+        }
+      } catch (e) {}
+    }
     fetchSrsData();
+
+    const handleUpdate = () => {
+      fetchSrsData();
+    };
+
+    window.addEventListener("cma:progress_updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    return () => {
+      window.removeEventListener("cma:progress_updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+    };
   }, [fetchSrsData]);
 
   const handleStartReview = () => {

@@ -92,10 +92,12 @@ export function ExamDateModal({
 
           {/* 1. Ngày thi mục tiêu */}
           <div>
-            <label className="text-xs font-semibold text-ink-800 mb-1 flex items-center gap-1.5">
-              <Calendar className="size-3.5 text-brand-600" />
-              Ngày thi mục tiêu
-            </label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-semibold text-ink-800 flex items-center gap-1.5">
+                <Calendar className="size-3.5 text-brand-600" />
+                Ngày thi mục tiêu
+              </label>
+            </div>
             <input
               type="date"
               required
@@ -103,6 +105,31 @@ export function ExamDateModal({
               onChange={(e) => setExamDate(e.target.value)}
               className="w-full text-sm px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-brand-600/50"
             />
+            {/* CMA Prometric Testing Window Presets */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[10px] text-ink-500 self-center mr-1">Cửa sổ thi IMA:</span>
+              <button
+                type="button"
+                onClick={() => setExamDate("2027-02-15")}
+                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted hover:bg-brand-50 hover:text-brand-700 transition cursor-pointer"
+              >
+                T1–T2/2027
+              </button>
+              <button
+                type="button"
+                onClick={() => setExamDate("2027-06-15")}
+                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted hover:bg-brand-50 hover:text-brand-700 transition cursor-pointer"
+              >
+                T5–T6/2027
+              </button>
+              <button
+                type="button"
+                onClick={() => setExamDate("2027-10-15")}
+                className="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted hover:bg-brand-50 hover:text-brand-700 transition cursor-pointer"
+              >
+                T9–T10/2027
+              </button>
+            </div>
           </div>
 
           {/* 2. Giờ học mỗi tuần */}

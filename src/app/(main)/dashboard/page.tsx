@@ -16,9 +16,22 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Load cached stats on mount for instant zero-latency render
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("cma_dashboard_stats");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setData(parsed);
+          setIsLoading(false);
+        }
+      } catch (e) {}
+    }
+  }, []);
+
   const fetchStats = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
       const res = await fetch("/api/user/stats");
       if (!res.ok) {
@@ -26,15 +39,33 @@ export default function DashboardPage() {
       }
       const json = await res.json();
       setData(json);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("cma_dashboard_stats", JSON.stringify(json));
+        } catch (e) {}
+      }
     } catch (err: any) {
-      setError(err.message || "Đã có lỗi xảy ra.");
+      if (!data) {
+        setError(err.message || "Đã có lỗi xảy ra.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
     fetchStats();
+
+    const handleProgressUpdate = () => {
+      fetchStats();
+    };
+
+    window.addEventListener("cma:progress_updated", handleProgressUpdate);
+    window.addEventListener("focus", handleProgressUpdate);
+    return () => {
+      window.removeEventListener("cma:progress_updated", handleProgressUpdate);
+      window.removeEventListener("focus", handleProgressUpdate);
+    };
   }, [fetchStats]);
 
   if (isLoading) {

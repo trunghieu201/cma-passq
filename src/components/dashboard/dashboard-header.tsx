@@ -5,7 +5,7 @@ export function DashboardHeader() {
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold text-ink-900 tracking-tight">
-          Bảng điều khiển
+          Bảng điều khiển · CMA Part 2
         </h1>
         <p className="text-sm text-ink-600 mt-0.5">
           Việc nên làm hôm nay và số ngày còn lại tới kỳ thi. Mỗi lần vào học, bắt đầu từ đây.

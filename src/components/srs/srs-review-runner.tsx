@@ -120,6 +120,7 @@ export function SrsReviewRunner({
         // Finished all items
         setIsSessionFinished(true);
         if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("cma:progress_updated"));
           try {
             const confetti = (await import("canvas-confetti")).default;
             confetti({
@@ -139,6 +140,45 @@ export function SrsReviewRunner({
       setIsGrading(false);
     }
   };
+
+  // Keyboard navigation for SRS reviews (Space to flip, 1-5 to grade, A-D to pick)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea") return;
+      if (isSessionFinished) return;
+
+      const key = e.key.toUpperCase();
+
+      if (!isRevealed) {
+        if (["A", "B", "C", "D"].includes(key)) {
+          e.preventDefault();
+          handleSelectChoice(key);
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleRevealAnswer();
+        }
+      } else {
+        // Revealed: ratings 1 to 5
+        if (e.key === "1") {
+          e.preventDefault();
+          handleGrade(1);
+        } else if (e.key === "2" || e.key === "3") {
+          e.preventDefault();
+          handleGrade(3);
+        } else if (e.key === "4" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleGrade(4);
+        } else if (e.key === "5") {
+          e.preventDefault();
+          handleGrade(5);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRevealed, isGrading, isSessionFinished, currentItem]);
 
   if (!currentItem) {
     return (
@@ -348,52 +388,56 @@ export function SrsReviewRunner({
                 {/* Rating 1: Quên / Làm lại */}
                 <button
                   type="button"
+                  data-testid="srs-rating-1"
                   disabled={isGrading}
                   onClick={() => handleGrade(1)}
                   className="p-2.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100/80 text-red-800 text-center transition-all cursor-pointer"
                 >
                   <div className="text-xs font-bold">🔴 Quên hẳn</div>
                   <div className="text-[10px] text-red-600 mt-0.5 font-mono">
-                    Lặp lại: 1 ngày
+                    Lặp lại: 1 ngày [1]
                   </div>
                 </button>
 
                 {/* Rating 3: Khó */}
                 <button
                   type="button"
+                  data-testid="srs-rating-3"
                   disabled={isGrading}
                   onClick={() => handleGrade(3)}
                   className="p-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100/80 text-amber-800 text-center transition-all cursor-pointer"
                 >
                   <div className="text-xs font-bold">🟠 Khó nhớ</div>
                   <div className="text-[10px] text-amber-700 mt-0.5 font-mono">
-                    Lặp lại: 3 ngày
+                    Lặp lại: 3 ngày [3]
                   </div>
                 </button>
 
                 {/* Rating 4: Nhớ tốt */}
                 <button
                   type="button"
+                  data-testid="srs-rating-4"
                   disabled={isGrading}
                   onClick={() => handleGrade(4)}
                   className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 text-center transition-all cursor-pointer"
                 >
                   <div className="text-xs font-bold">🟢 Nhớ tốt</div>
                   <div className="text-[10px] text-emerald-700 mt-0.5 font-mono">
-                    Lặp lại: 7-16 ngày
+                    Lặp lại: 7-16 ngày [4]
                   </div>
                 </button>
 
                 {/* Rating 5: Rất dễ */}
                 <button
                   type="button"
+                  data-testid="srs-rating-5"
                   disabled={isGrading}
                   onClick={() => handleGrade(5)}
                   className="p-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100/80 text-blue-800 text-center transition-all cursor-pointer"
                 >
                   <div className="text-xs font-bold">🔵 Rất dễ</div>
                   <div className="text-[10px] text-blue-700 mt-0.5 font-mono">
-                    Lặp lại: 35 ngày
+                    Lặp lại: 35 ngày [5]
                   </div>
                 </button>
               </div>

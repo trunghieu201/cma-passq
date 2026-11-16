@@ -130,6 +130,58 @@ export function QuizRunner({
   }, [questions.length, subunitId, title]);
 
   const currentQ = questions[currentIndex];
+  const storageDraftKey = `cma_quiz_draft_${subunitId || "practice"}`;
+
+  // Restore draft and bookmarks on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem(storageDraftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.selectedAnswers) setSelectedAnswers(parsed.selectedAnswers);
+        if (parsed.eliminatedChoices) setEliminatedChoices(parsed.eliminatedChoices);
+        if (parsed.flaggedQuestions) setFlaggedQuestions(parsed.flaggedQuestions);
+        if (parsed.revealedExplanations) setRevealedExplanations(parsed.revealedExplanations);
+        if (typeof parsed.secondsElapsed === "number") setSecondsElapsed(parsed.secondsElapsed);
+      }
+      fetch("/api/bookmarks")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.bookmarks) {
+            const bmMap: Record<string, boolean> = {};
+            data.bookmarks.forEach((b: any) => {
+              if (b.question?.id) bmMap[b.question.id] = true;
+            });
+            setBookmarkedQuestions((prev) => ({ ...bmMap, ...prev }));
+          }
+        })
+        .catch(() => {});
+    } catch (e) {
+      // Ignore local storage error
+    }
+  }, [storageDraftKey]);
+
+  // Auto-save draft on state change
+  useEffect(() => {
+    if (typeof window === "undefined" || isFinished) return;
+    if (Object.keys(selectedAnswers).length === 0) return;
+    try {
+      localStorage.setItem(
+        storageDraftKey,
+        JSON.stringify({
+          selectedAnswers,
+          eliminatedChoices,
+          flaggedQuestions,
+          revealedExplanations,
+          secondsElapsed,
+          timestamp: Date.now(),
+        })
+      );
+    } catch (e) {
+      // Ignore
+    }
+  }, [selectedAnswers, eliminatedChoices, flaggedQuestions, revealedExplanations, secondsElapsed, isFinished, storageDraftKey]);
 
   const handleSelectChoice = (choiceKey: string) => {
     if (!currentQ) return;
@@ -153,8 +205,7 @@ export function QuizRunner({
     });
   };
 
-  const toggleEliminate = (e: React.MouseEvent, choiceKey: string) => {
-    e.stopPropagation();
+  const toggleEliminateKey = (choiceKey: string) => {
     if (!currentQ) return;
     const isCurrentlyEliminated = (eliminatedChoices[currentQ.id] || []).includes(choiceKey);
     setEliminatedChoices((prev) => {
@@ -178,6 +229,11 @@ export function QuizRunner({
     }
   };
 
+  const toggleEliminate = (e: React.MouseEvent, choiceKey: string) => {
+    e.stopPropagation();
+    toggleEliminateKey(choiceKey);
+  };
+
   const toggleFlag = () => {
     if (!currentQ) return;
     setFlaggedQuestions((prev) => ({
@@ -195,11 +251,18 @@ export function QuizRunner({
     }));
 
     try {
-      await fetch("/api/bookmarks", {
+      const res = await fetch("/api/bookmarks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ questionId: currentQ.id }),
       });
+      if (res.ok && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("cma:bookmark_updated", {
+            detail: { questionId: currentQ.id, bookmarked: !isBookmarked },
+          })
+        );
+      }
     } catch (err) {
       // Revert if error
       setBookmarkedQuestions((prev) => ({
@@ -294,16 +357,23 @@ export function QuizRunner({
       setIsSubmitting(false);
       setIsFinished(true);
 
-      if (accuracyPct >= 80 && typeof window !== "undefined") {
+      if (typeof window !== "undefined") {
         try {
-          const confetti = (await import("canvas-confetti")).default;
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-          });
-        } catch (e) {
-          // Ignore
+          localStorage.removeItem(storageDraftKey);
+        } catch (e) {}
+        window.dispatchEvent(new CustomEvent("cma:progress_updated"));
+
+        if (accuracyPct >= 80) {
+          try {
+            const confetti = (await import("canvas-confetti")).default;
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { y: 0.6 },
+            });
+          } catch (e) {
+            // Ignore
+          }
         }
       }
     }
@@ -326,11 +396,77 @@ export function QuizRunner({
     );
   }
 
-  const userChoice = selectedAnswers[currentQ.id];
-  const isRevealed = Boolean(revealedExplanations[currentQ.id]);
-  const isEliminated = (key: string) => (eliminatedChoices[currentQ.id] || []).includes(key);
-  const isFlagged = Boolean(flaggedQuestions[currentQ.id]);
-  const isBookmarked = Boolean(bookmarkedQuestions[currentQ.id]);
+  const userChoice = currentQ ? selectedAnswers[currentQ.id] : undefined;
+  const isRevealed = currentQ ? Boolean(revealedExplanations[currentQ.id]) : false;
+  const isEliminated = (key: string) =>
+    currentQ ? (eliminatedChoices[currentQ.id] || []).includes(key) : false;
+  const isFlagged = currentQ ? Boolean(flaggedQuestions[currentQ.id]) : false;
+  const isBookmarked = currentQ ? Boolean(bookmarkedQuestions[currentQ.id]) : false;
+
+  // Global Keyboard Navigation (A/B/C/D or 1/2/3/4, Enter/Space, S, F, M, Arrows)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea") return;
+      if (showFormulaHelper || showQuestionPalette || isFinished) return;
+
+      const key = e.key.toUpperCase();
+
+      if (["A", "B", "C", "D"].includes(key)) {
+        e.preventDefault();
+        handleSelectChoice(key);
+      } else if (["1", "2", "3", "4"].includes(e.key)) {
+        e.preventDefault();
+        const mapKeys: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D" };
+        handleSelectChoice(mapKeys[e.key]);
+      } else if (key === "S") {
+        e.preventDefault();
+        const choiceToEliminate = userChoice || "A";
+        toggleEliminateKey(choiceToEliminate);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (learningMode === "instant" && !isRevealed) {
+          if (userChoice) {
+            handleCheckAnswer();
+          }
+        } else {
+          if (currentIndex < questions.length - 1) {
+            setCurrentIndex((prev) => prev + 1);
+          } else {
+            handleFinishQuiz();
+          }
+        }
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setCurrentIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex((prev) => prev + 1);
+        }
+      } else if (key === "F") {
+        e.preventDefault();
+        toggleFlag();
+      } else if (key === "M") {
+        e.preventDefault();
+        toggleBookmark();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    currentQ,
+    userChoice,
+    learningMode,
+    isRevealed,
+    currentIndex,
+    questions.length,
+    showFormulaHelper,
+    showQuestionPalette,
+    isFinished,
+    handleFinishQuiz,
+  ]);
 
   const answeredCount = Object.keys(selectedAnswers).length;
 
@@ -638,6 +774,16 @@ export function QuizRunner({
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Keyboard shortcut guide */}
+        <div className="hidden sm:flex items-center justify-center gap-3 text-[11px] text-ink-600 bg-muted/40 py-2 px-3 rounded-lg border border-border/50">
+          <span className="font-semibold text-ink-800">Phím tắt:</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">A/B/C/D</kbd> hoặc <kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">1-4</kbd> Chọn</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">Enter / Space</kbd> Tiếp / Xem lời giải</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">S</kbd> Gạch loại trừ</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">F</kbd> Cờ</span>
+          <span><kbd className="px-1.5 py-0.5 bg-card border border-border rounded text-[10px] font-mono font-bold text-ink-800">M</kbd> Lưu</span>
         </div>
       </div>
 

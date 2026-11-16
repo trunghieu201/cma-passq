@@ -41,6 +41,17 @@ export function AppLayout({
   return (
     <LayoutProvider user={user} initialDueCount={initialDueCount}>
       <div className="min-h-screen bg-background text-foreground flex antialiased">
+        {/* Main Application Area (Rendered first so visible content takes priority in DOM) */}
+        <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
+          <Header />
+          <main className="flex-1 px-4 py-6 md:px-8 md:py-8 max-w-7xl w-full mx-auto animate-in fade-in-50 duration-200">
+            {children}
+          </main>
+          <footer className="py-3 px-4 border-t border-border/40 text-center text-xs text-muted-foreground">
+            PassQ CMA Part 2 Architecture Online
+          </footer>
+        </div>
+
         {/* Desktop Sidebar (Persistent) */}
         <aside
           data-testid="app-sidebar"
@@ -51,14 +62,6 @@ export function AppLayout({
 
         {/* Mobile Slide-Over Drawer */}
         <MobileDrawer />
-
-        {/* Main Application Area */}
-        <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
-          <Header />
-          <main className="flex-1 px-4 py-6 md:px-8 md:py-8 max-w-7xl w-full mx-auto animate-in fade-in-50 duration-200">
-            {children}
-          </main>
-        </div>
       </div>
     </LayoutProvider>
   );

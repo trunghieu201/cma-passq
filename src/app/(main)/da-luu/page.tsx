@@ -20,21 +20,48 @@ export default function BookmarksPage() {
 
   const fetchBookmarks = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
       const res = await fetch("/api/bookmarks");
       if (!res.ok) throw new Error("Không thể tải danh sách câu hỏi đã lưu.");
       const data = await res.json();
-      setBookmarks(data.bookmarks || []);
+      const list = data.bookmarks || [];
+      setBookmarks(list);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("cma_cached_bookmarks", JSON.stringify(list));
+        } catch (e) {}
+      }
     } catch (err: any) {
-      setError(err.message || "Đã có lỗi xảy ra.");
+      if (bookmarks.length === 0) {
+        setError(err.message || "Đã có lỗi xảy ra.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [bookmarks.length]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("cma_cached_bookmarks");
+        if (cached) {
+          setBookmarks(JSON.parse(cached));
+          setIsLoading(false);
+        }
+      } catch (e) {}
+    }
     fetchBookmarks();
+
+    const handleUpdate = () => {
+      fetchBookmarks();
+    };
+
+    window.addEventListener("cma:bookmark_updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
+    return () => {
+      window.removeEventListener("cma:bookmark_updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
+    };
   }, [fetchBookmarks]);
 
   const handleRemoveBookmark = async (questionId: string) => {

@@ -111,6 +111,17 @@ export function RoadmapTree() {
     }
 
     loadCurriculum();
+
+    const handleProgressUpdate = () => {
+      loadCurriculum();
+    };
+
+    window.addEventListener("cma:progress_updated", handleProgressUpdate);
+    window.addEventListener("focus", handleProgressUpdate);
+    return () => {
+      window.removeEventListener("cma:progress_updated", handleProgressUpdate);
+      window.removeEventListener("focus", handleProgressUpdate);
+    };
   }, [initialActiveNode]);
 
   const toggleUnit = (unitId: string) => {
@@ -453,10 +464,23 @@ export function RoadmapTree() {
                                 </div>
 
                                 <div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.2 rounded font-mono">
                                       {su.code}
                                     </span>
+                                    {isMastered || isCompleted ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        Hoàn thành
+                                      </span>
+                                    ) : su.status === "in_progress" || su.attemptsCount > 0 ? (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                        Đang học
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                        Chưa học
+                                      </span>
+                                    )}
                                     <span className="text-xs text-ink-500 font-semibold">
                                       {su.questionCount} câu hỏi
                                     </span>

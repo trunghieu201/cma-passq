@@ -1,8 +1,10 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Layers, CheckSquare, RotateCcw, ArrowRight } from "lucide-react";
+import { Layers, CheckSquare, RotateCcw, ArrowRight, Settings2 } from "lucide-react";
 
 interface DailyTodoProps {
   dueFlashcards: number;
@@ -19,9 +21,28 @@ export function DailyTodoCard({
   activeUnitTitle = "Chương 1",
   activeUnitId = "u1",
 }: DailyTodoProps) {
+  const [goal, setGoal] = useState<number>(practiceQuestionsGoal || 20);
+  const [showAdjust, setShowAdjust] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedGoal = localStorage.getItem("cma_daily_goal");
+      if (savedGoal) {
+        setGoal(Number(savedGoal));
+      }
+    }
+  }, []);
+
+  const handleUpdateGoal = (newGoal: number) => {
+    setGoal(newGoal);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("cma_daily_goal", String(newGoal));
+    }
+  };
+
   const totalItems =
     (dueFlashcards > 0 ? 1 : 0) +
-    (practiceQuestionsGoal > 0 ? 1 : 0) +
+    (goal > 0 ? 1 : 0) +
     (weaknessQuestions > 0 ? 1 : 0);
 
   return (
@@ -31,13 +52,50 @@ export function DailyTodoCard({
           <CardTitle className="text-base font-bold text-ink-900 flex items-center gap-2">
             Việc cần làm hôm nay
           </CardTitle>
-          <span className="bg-brand-50 text-brand-600 text-xs font-bold px-2.5 py-0.5 rounded-full border border-brand-200">
-            {totalItems} mục
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdjust(!showAdjust)}
+              className="text-xs text-ink-500 hover:text-ink-800 flex items-center gap-1 cursor-pointer"
+              title="Tùy chỉnh mục tiêu hàng ngày"
+            >
+              <Settings2 className="size-3.5" />
+              <span>Chỉnh mục tiêu</span>
+            </button>
+            <span className="bg-brand-50 text-brand-600 text-xs font-bold px-2.5 py-0.5 rounded-full border border-brand-200">
+              {totalItems} mục
+            </span>
+          </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
+        {/* Quick Goal Adjuster Dropdown / Accordion */}
+        {showAdjust && (
+          <div className="p-3 bg-muted/40 rounded-xl border border-border/80 text-xs space-y-2 animate-in fade-in duration-150">
+            <div className="flex justify-between items-center">
+              <span className="font-semibold text-ink-800">Mục tiêu câu hỏi / ngày:</span>
+              <span className="font-bold text-brand-600 font-mono">{goal} câu</span>
+            </div>
+            <div className="flex gap-2">
+              {[10, 20, 30, 50].map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => handleUpdateGoal(val)}
+                  className={`flex-1 py-1 rounded text-center font-bold text-xs transition cursor-pointer ${
+                    goal === val
+                      ? "bg-brand-600 text-white shadow-xs"
+                      : "bg-card border border-border text-ink-700 hover:bg-muted"
+                  }`}
+                >
+                  {val} câu
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Item 1: Flashcards */}
         <div className="flex items-center justify-between p-3 rounded-xl border border-ink-100 hover:border-purple-200 hover:bg-purple-50/20 transition-all">
           <div className="flex items-center gap-3">
@@ -73,7 +131,7 @@ export function DailyTodoCard({
             </div>
             <div>
               <div className="text-sm font-semibold text-ink-900">
-                Làm {practiceQuestionsGoal} câu trắc nghiệm kiểm tra
+                Làm {goal} câu trắc nghiệm kiểm tra
               </div>
               <div className="text-xs text-ink-500">
                 Luyện tập {activeUnitTitle} để kiểm tra mức độ nắm bài
@@ -87,7 +145,7 @@ export function DailyTodoCard({
             className="shrink-0 text-ink-800 cursor-pointer"
           >
             <Link
-              href={`/luyen-tap?unit=${activeUnitId}`}
+              href={`/luyen-tap?unit=${activeUnitId}&limit=${goal}`}
               className="gap-1"
             >
               <span>Bắt đầu</span>
@@ -117,10 +175,7 @@ export function DailyTodoCard({
             size="sm"
             className="shrink-0 text-ink-800 cursor-pointer"
           >
-            <Link
-              href="/luyen-tap?mode=weakness"
-              className="gap-1"
-            >
+            <Link href="/luyen-tap?mode=weakness" className="gap-1">
               <span>Luyện lại</span>
               <ArrowRight className="size-3" />
             </Link>

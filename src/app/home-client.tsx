@@ -345,8 +345,9 @@ export function HomePageClient() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-border py-6 text-center text-xs text-ink-500">
+      <footer className="bg-white border-t border-border py-6 text-center text-xs text-ink-500 space-y-1">
         <p>Hệ thống học tập & luyện thi CMA Part 2 — Thiết kế theo chuẩn giao diện PassQ môn MA</p>
+        <p className="text-[11px] text-muted-foreground">PassQ CMA Part 2 Architecture Online</p>
       </footer>
     </div>
   );
