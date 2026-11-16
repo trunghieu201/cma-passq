@@ -1,0 +1,472 @@
+// =============================================================================
+// PRISMA SCHEMA FOR PASSQ CMA PART 2 WEB APPLICATION
+// Harmonized Specification: Survey 2 + Survey 3
+// Target Database: SQLite (WAL Mode) / PostgreSQL Compatible
+// =============================================================================
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =============================================================================
+// 1. MULTI-USER AUTHENTICATION & SESSIONS (F1)
+// =============================================================================
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String
+  fullName        String
+  avatarUrl       String?
+  role            String    @default("STUDENT") // "STUDENT" | "ADMIN"
+  targetExamDate  DateTime?
+  dailyGoalCount  Int       @default(20)        // Target questions/day
+  dailyGoalMin    Int       @default(30)        // Target minutes/day
+  studyMode       String    @default("standard")// "standard" | "fast_track"
+  weeklyHours     Int       @default(10)        // Weekly commitment hours
+  targetScore     Int       @default(400)       // Target scaled score (out of 500)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions        UserSession[]
+  stats           UserStudyStats?
+  streak          UserStreak?
+  dailyActivities UserDailyActivity[]
+  nodeProgress    UserNodeProgress[]
+  quizSessions    QuizSession[]
+  reviews         UserQuestionReview[]
+  bookmarks       UserBookmark[]
+  notes           UserNote[]
+  examAttempts    UserExamAttempt[]
+
+  @@index([email])
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// =============================================================================
+// 2. USER PROGRESSION, STATS & STREAK SYSTEM (F4, F5)
+// =============================================================================
+
+model UserStudyStats {
+  userId           String   @id
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totalAnswered    Int      @default(0)
+  totalCorrect     Int      @default(0)
+  totalTimeSeconds Int      @default(0)
+  streakDays       Int      @default(0)
+  lastActiveDate   DateTime?
+  dailyGoalCount   Int      @default(20)
+  updatedAt        DateTime @updatedAt
+}
+
+model UserStreak {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastActiveDate DateTime?
+  freezesLeft    Int       @default(1) // Streak freeze protection tokens
+  updatedAt      DateTime  @updatedAt
+}
+
+model UserDailyActivity {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityDate     DateTime // Truncated to YYYY-MM-DD 00:00:00Z
+  questionsSolved  Int      @default(0)
+  correctCount     Int      @default(0)
+  timeSpentSeconds Int      @default(0)
+
+  @@unique([userId, activityDate])
+  @@index([userId, activityDate])
+}
+
+model UserNodeProgress {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subunitId     String
+  subunit       Subunit  @relation(fields: [subunitId], references: [id], onDelete: Cascade)
+  status        String   @default("locked") // "locked" | "in_progress" | "completed" | "mastered"
+  stars         Int      @default(0)        // 0 to 3 stars
+  accuracyPct   Float    @default(0.0)
+  attemptsCount Int      @default(0)
+  masteryScore  Float    @default(0.0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, subunitId])
+  @@index([userId, status])
+  @@index([subunitId])
+}
+
+// =============================================================================
+// 3. CURRICULUM HIERARCHY & TAXONOMY (F2, F5)
+// =============================================================================
+
+model Section {
+  id          String   @id // "A", "B", "C", "D", "E", "F"
+  code        String   // "A", "B", ...
+  part        Int      @default(2) // CMA Part 2
+  title       String   // e.g. "Financial Statement Analysis"
+  weight      Int      // ICMA Syllabus Weight: 20, 20, 25, 10, 10, 15 (%)
+  orderIndex  Int
+  description String?
+
+  units       Unit[]
+  questions   Question[]
+  cbqCases    CbqCaseSection[]
+  formulas    Formula[]
+
+  @@unique([part, code])
+}
+
+model Unit {
+  id          String   @id // e.g. "u1", "u2" .. "u15"
+  sectionId   String
+  section     Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  unitNumber  Int      // 1 to 15
+  title       String   // e.g. "Liquidity, Solvency, and Leverage Ratios"
+  totalCount  Int      @default(0)
+  orderIndex  Int
+
+  subunits    Subunit[]
+  questions   Question[]
+  formulas    Formula[]
+
+  @@unique([sectionId, unitNumber])
+  @@index([sectionId])
+}
+
+model Subunit {
+  id          String             @id // e.g. "2.1.1", "2.1.2" .. "2.15.2"
+  unitId      String
+  unit        Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  code        String             // e.g. "2.1.1"
+  subunitNum  Int                // 1, 2, 3...
+  title       String             // e.g. "Common-Size Financial Statements"
+  totalCount  Int                @default(0)
+  orderIndex  Int
+
+  categories  Category[]
+  questions   Question[]
+  userNodes   UserNodeProgress[]
+
+  @@unique([unitId, subunitNum])
+  @@index([code])
+  @@index([unitId])
+}
+
+model Category {
+  id          String     @id // slug e.g. "qb-p2-u01s2-current-ratio-calculations-sensi"
+  subunitId   String
+  subunit     Subunit    @relation(fields: [subunitId], references: [id], onDelete: Cascade)
+  name        String     // e.g. "Current Ratio Calculations & Sensitivity"
+  description String?    // LOS competency statement
+  formulaHint String?    // Formula / decision rule hint
+  orderIndex  Int        @default(0)
+
+  questions   Question[]
+
+  @@index([subunitId])
+}
+
+// =============================================================================
+// 4. QUESTION BANK & DISTRACTOR CHOICES (F2, F6)
+// =============================================================================
+
+model Question {
+  id            String    @id // e.g. "p2-1843", "p2-m27-01-001"
+  part          Int       @default(2)
+  sectionId     String
+  section       Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  unitId        String
+  unit          Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  subunitId     String?
+  subunit       Subunit?  @relation(fields: [subunitId], references: [id], onDelete: SetNull)
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sequenceNum   Int       // Sequence index in source
+  source        String    // e.g. "Gleim 2024 + 2025", "IMA Mock 2027"
+  questionType  Int       @default(0) // 0: Concept, 1: Calculation
+  stem          String    // Prompt text with markdown tables & math
+  basisScenario String?   // Shared fact pattern for multi-question sets
+  correctChoice String    // "A", "B", "C", or "D"
+  explanation   String    // Full pedagogical step-by-step solution
+  citation      String?   // Detailed source citation
+  originalQid   String?   // Legacy publisher question ID
+  isFlagged     Boolean   @default(false) // ok === false audit status
+  charCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  choices        Choice[]
+  mockQuestions  MockExamQuestion[]
+  sessionAnswers QuizSessionAnswer[]
+  reviews        UserQuestionReview[]
+  bookmarks      UserBookmark[]
+  notes          UserNote[]
+
+  @@index([part, sectionId])
+  @@index([unitId])
+  @@index([subunitId])
+  @@index([categoryId])
+  @@index([correctChoice])
+}
+
+model Choice {
+  id                 String   @id @default(uuid())
+  questionId         String
+  question           Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  choiceKey          String   // "A", "B", "C", "D"
+  content            String   // Option prompt text
+  isCorrect          Boolean
+  distractorAnalysis String?  // Pedagogical analysis explaining why choice is wrong
+  orderIndex         Int      // 1, 2, 3, 4
+
+  @@unique([questionId, choiceKey])
+  @@index([questionId])
+}
+
+// =============================================================================
+// 5. CASE-BASED ESSAY QUESTIONS (CBQ) (F2)
+// =============================================================================
+
+model CbqCase {
+  id           String           @id // cid e.g. "2.1", "P2-C04"
+  part         Int              @default(2)
+  title        String           // e.g. "Focused Solutions"
+  scenarioText String           // Comprehensive scenario text & financial tables
+  reference    String?          // Publisher reference
+  source       String?          // e.g. "IMA Official CBQ 2026"
+  itemCount    Int
+
+  sections     CbqCaseSection[]
+  items        CbqItem[]
+}
+
+model CbqCaseSection {
+  caseId    String
+  case      CbqCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@id([caseId, sectionId])
+  @@index([sectionId])
+}
+
+model CbqItem {
+  id              String  @id // iid e.g. "2.1#1"
+  caseId          String
+  case            CbqCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  itemNumber      Int     // 1, 2, 3...
+  itemType        String  // "Numerical", "MCQ", "Drag-drop", "Calculation / Fill-in"
+  cso             String? // Content Specification Outline code
+  los             String? // Learning Outcome Statement
+  promptText      String
+  canonicalAnswer String
+  scoringRule     String? // e.g. "whole numbers only", "round to 2 decimals"
+  points          Int     @default(1)
+  explanation     String  // Pedagogical worked solution
+
+  @@index([caseId])
+}
+
+// =============================================================================
+// 6. FORMULA REPOSITORY & CHEAT SHEET (F9)
+// =============================================================================
+
+model Formula {
+  id           String   @id // "ff-p2-00" or "th-p2-000"
+  slug         String?  @unique
+  part         Int      @default(2)
+  sectionId    String?
+  section      Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  unitId       String?
+  unit         Unit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  titleEn      String
+  titleVi      String
+  latexExpr    String   // LaTeX math formatting
+  plainExpr    String   // Plain text representation
+  noteEn       String?
+  noteVi       String?
+  isCheatSheet Boolean  @default(false)
+  isLibrary    Boolean  @default(false)
+  contentJson  String?  // Rich encyclopedia data: summary30s, steps, traps, shortcuts
+
+  @@index([part, sectionId])
+  @@index([unitId])
+}
+
+// =============================================================================
+// 7. PROMETRIC MOCK EXAMS (F8)
+// =============================================================================
+
+model MockExam {
+  id              String             @id // "p2_m27_01" .. "p2_mock6"
+  name            String             // "Mock Exam 01 (2027 IMA)"
+  part            Int                @default(2)
+  questionCount   Int                @default(100)
+  durationMinutes Int                @default(180)
+
+  questions       MockExamQuestion[]
+  attempts        UserExamAttempt[]
+}
+
+model MockExamQuestion {
+  mockId     String
+  mock       MockExam @relation(fields: [mockId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  seqOrder   Int      // 1 to 100
+
+  @@id([mockId, questionId])
+  @@index([mockId, seqOrder])
+  @@index([questionId])
+}
+
+// =============================================================================
+// 8. QUIZ SESSIONS & INTERACTIVE PRACTICE (F6)
+// =============================================================================
+
+model QuizSession {
+  id                 String              @id @default(uuid())
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode               String              // "PRACTICE" | "MOCK_EXAM" | "SPACED_REVIEW" | "SUBUNIT_PRACTICE"
+  title              String
+  filterScope        String?             // JSON criteria (e.g. subunitIds, sectionIds)
+  totalQuestions     Int
+  completedQuestions Int                 @default(0)
+  correctCount       Int                 @default(0)
+  timeSpentSec       Int                 @default(0)
+  timeLimitSec       Int?                // e.g. 10800 for Mock
+  status             String              @default("IN_PROGRESS") // "IN_PROGRESS" | "COMPLETED" | "ABANDONED"
+  scorePercent       Float?
+  scaledScore        Int?                // 0 - 500 IMA scaled score
+  startedAt          DateTime            @default(now())
+  completedAt        DateTime?
+
+  answers            QuizSessionAnswer[]
+
+  @@index([userId, status])
+  @@index([userId, mode])
+}
+
+model QuizSessionAnswer {
+  id             String      @id @default(uuid())
+  sessionId      String
+  session        QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedChoice String?     // "A", "B", "C", "D" or null
+  isCorrect      Boolean?
+  isFlagged      Boolean     @default(false)
+  eliminatedKeys String?     // JSON array of strike-out options: '["B","C"]'
+  timeSpentMs    Int         @default(0)
+  answeredAt     DateTime    @default(now())
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@index([questionId])
+}
+
+// =============================================================================
+// 9. SUPERMEMO SM-2 SPACED REPETITION ("ÔN TẬP HÔM NAY") (F7)
+// =============================================================================
+
+model UserQuestionReview {
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId         String
+  question           Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // SM-2 Algorithm State
+  stage              Int       @default(0)   // 0: New, 1: 1d, 2: 3d, 3: 7d, 4: 16d, 5: 35d
+  intervalDays       Int       @default(0)   // Wait interval in days
+  easeFactor         Float     @default(2.5) // Difficulty factor (min: 1.3)
+  consecutiveCorrect Int       @default(0)   // Streak of correct reviews
+  lapses             Int       @default(0)   // Number of times lapsed from memory
+  totalAttempts      Int       @default(0)
+  totalCorrect       Int       @default(0)
+
+  dueDate            DateTime  @default(now())
+  lastReviewedAt     DateTime?
+  lastResult         Boolean?
+  lastSelectedChoice String?
+  averageTimeSpentMs Int       @default(0)
+
+  @@unique([userId, questionId])
+  @@index([userId, dueDate])
+  @@index([userId, stage])
+  @@index([questionId])
+}
+
+// =============================================================================
+// 10. BOOKMARKS, PERSONAL NOTES & EXAM ATTEMPTS (F8, F9)
+// =============================================================================
+
+model UserBookmark {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, questionId])
+  @@index([userId])
+  @@index([questionId])
+}
+
+model UserNote {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  content    String   // Rich user notes
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, questionId])
+  @@index([userId])
+  @@index([questionId])
+}
+
+model UserExamAttempt {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mockId           String
+  mock             MockExam @relation(fields: [mockId], references: [id], onDelete: Cascade)
+  score            Int      // Number of correct answers (0 - 100)
+  totalQuestions   Int      @default(100)
+  totalTimeSeconds Int
+  scaledScore      Int?     // 0 - 500 IMA scaled score
+  isPassed         Boolean  @default(false) // scaledScore >= 360
+  answersJson      String   // Serialized Record<string, string> of answers
+  sectionStatsJson String   // Score breakdown per Section A..F
+  completedAt      DateTime @default(now())
+
+  @@index([userId, mockId])
+  @@index([userId, completedAt])
+}

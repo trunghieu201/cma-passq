@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* PassQ Authentic Design Tokens */
+    --background: 0 0% 100%;             /* #ffffff */
+    --foreground: 343 25% 14%;           /* #2b1a1e PassQ Ink */
+
+    --card: 0 0% 100%;                   /* #ffffff */
+    --card-foreground: 343 25% 14%;      /* #2b1a1e */
+
+    --popover: 0 0% 100%;                /* #ffffff */
+    --popover-foreground: 343 25% 14%;   /* #2b1a1e */
+
+    --primary: 0 72% 51%;                /* #dc2626 PassQ Brand Red */
+    --primary-foreground: 0 0% 100%;     /* #ffffff */
+
+    --secondary: 260 14% 93%;            /* #eceaf0 Light Purple-Gray */
+    --secondary-foreground: 343 25% 14%; /* #2b1a1e */
+
+    --muted: 264 14% 96%;                /* #f5f4f7 Page Muted */
+    --muted-foreground: 344 8% 40%;      /* #6e5c61 */
+
+    --destructive: 0 72% 51%;            /* #dc2626 */
+    --destructive-foreground: 0 0% 100%;
+
+    --accent: 0 85% 96%;                 /* #fdecec Light Red Accent */
+    --accent-foreground: 3 80% 41%;      /* #b3261e */
+
+    --border: 290 8% 88%;                /* #e2dee3 Soft Gray Border */
+    --input: 290 8% 88%;
+    --ring: 0 72% 51%;                   /* #dc2626 */
+
+    --radius: 0.75rem;                   /* 12px (rounded-xl) */
+
+    /* PassQ Charts & Data Visualization */
+    --chart-1: 0 72% 51%;                /* #dc2626 Red (Target / Planned Hours) */
+    --chart-2: 207 70% 41%;              /* #1f6fb2 Blue (Actual Logged Hours) */
+    --chart-3: 146 80% 35%;              /* #12a150 Green (Accuracy / Mastery) */
+    --chart-4: 267 83% 58%;              /* #7c3aed Purple (SRS / Flashcards) */
+    --chart-5: 38 88% 34%;               /* #a36a0a Amber (Due / Warning) */
+
+    /* Direct brand hex aliases */
+    --color-brand-50: #fdecec;
+    --color-brand-100: #fbd5d5;
+    --color-brand-200: #f6b0b0;
+    --color-brand-300: #f08383;
+    --color-brand-400: #e75353;
+    --color-brand-500: #e23b3b;
+    --color-brand-600: #dc2626;
+    --color-brand-700: #a81919;
+    --color-brand-800: #8c1517;
+    --color-brand-900: #7a1315;
+
+    /* Direct ink hex aliases */
+    --color-ink-50: #f5f4f7;
+    --color-ink-100: #eceaf0;
+    --color-ink-200: #e2dee3;
+    --color-ink-300: #cfc9d1;
+    --color-ink-400: #948b94;
+    --color-ink-500: #786c75;
+    --color-ink-600: #6e5c61;
+    --color-ink-700: #4a373c;
+    --color-ink-800: #3a262b;
+    --color-ink-900: #2b1a1e;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Question table and formula styling */
+.q-table {
+  @apply w-full border-collapse my-3 text-sm;
+}
+.q-table th {
+  @apply bg-muted font-semibold p-2.5 text-left border border-border;
+}
+.q-table td {
+  @apply p-2.5 border border-border tabular-nums;
+}
