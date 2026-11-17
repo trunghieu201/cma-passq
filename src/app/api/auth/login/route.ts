@@ -69,7 +69,10 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { error: 'Đã có lỗi xảy ra trong quá trình đăng nhập.' },
+      {
+        error: 'Đã có lỗi xảy ra trong quá trình đăng nhập.',
+        details: error?.message || String(error),
+      },
       { status: 500 }
     );
   }
