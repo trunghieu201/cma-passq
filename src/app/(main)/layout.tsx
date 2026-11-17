@@ -18,24 +18,32 @@ export default async function MainLayout({
   }
 
   // 2. Fetch live study stats and due cards count server-side
-  const [stats, dueCount] = await Promise.all([
-    prisma.userStudyStats.findUnique({
-      where: { userId: user.id },
-      select: {
-        totalAnswered: true,
-        totalCorrect: true,
-        streakDays: true,
-        dailyGoalCount: true,
-        lastActiveDate: true,
-      },
-    }),
-    prisma.userQuestionReview.count({
-      where: {
-        userId: user.id,
-        dueDate: { lte: new Date() },
-      },
-    }),
-  ]);
+  let stats: any = null;
+  let dueCount = 0;
+  try {
+    const [fetchedStats, fetchedDueCount] = await Promise.all([
+      prisma.userStudyStats.findUnique({
+        where: { userId: user.id },
+        select: {
+          totalAnswered: true,
+          totalCorrect: true,
+          streakDays: true,
+          dailyGoalCount: true,
+          lastActiveDate: true,
+        },
+      }).catch(() => null),
+      prisma.userQuestionReview.count({
+        where: {
+          userId: user.id,
+          dueDate: { lte: new Date() },
+        },
+      }).catch(() => 0),
+    ]);
+    stats = fetchedStats;
+    dueCount = fetchedDueCount || 0;
+  } catch (err) {
+    console.error('[Layout] Error fetching user stats/reviews:', err);
+  }
 
   const sanitizedUser = {
     id: user.id,
